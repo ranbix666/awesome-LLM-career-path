@@ -1,30 +1,37 @@
-import React, { useState } from 'react';
-import { 
-  Map, 
-  School, 
-  Terminal, 
-  Library, 
-  LineChart, 
-  Settings, 
-  HelpCircle, 
-  Search, 
-  Bell, 
-  Bolt, 
-  CheckCircle2, 
-  Lock, 
-  ArrowRight, 
-  PlayCircle, 
-  Github, 
-  FileText, 
+import React, { useState, useMemo } from 'react';
+import {
+  Map,
+  School,
+  Terminal,
+  Library,
+  LineChart,
+  Settings,
+  HelpCircle,
+  Search,
+  Bell,
+  Bolt,
+  CheckCircle2,
+  Lock,
+  ArrowRight,
+  PlayCircle,
+  Github,
+  FileText,
   ExternalLink,
   ChevronRight,
   TrendingUp,
   Activity,
-  Award
+  Award,
+  X,
+  MessageSquare,
+  Loader2,
+  Wrench,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
-import { ROADMAP_DATA, RoadmapStage, Resource } from './constants';
+import { ROADMAP_DATA, RoadmapStage, Resource, PROJECTS, Project } from './constants';
+import { askStudyAssistant, isGeminiConfigured } from './lib/gemini';
 
 // --- Components ---
 
@@ -157,11 +164,199 @@ const StageCard = ({ stage }: { stage: RoadmapStage }) => {
 
 // --- Main App ---
 
+// --- Difficulty Badge ---
+
+const DifficultyBadge = ({ difficulty }: { difficulty: Project['difficulty'] }) => {
+  const colors = {
+    beginner: 'bg-green-500/20 text-green-400',
+    intermediate: 'bg-yellow-500/20 text-yellow-400',
+    advanced: 'bg-red-500/20 text-red-400',
+  };
+  return (
+    <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest", colors[difficulty])}>
+      {difficulty}
+    </span>
+  );
+};
+
+// --- AI Assistant Panel ---
+
+const AIAssistantPanel = ({
+  open,
+  onClose,
+  initialContext,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initialContext: string;
+}) => {
+  const [question, setQuestion] = useState('');
+  const [response, setResponse] = useState('');
+  const [loading, setLoading] = useState(false);
+  const configured = isGeminiConfigured();
+
+  const handleSubmit = async () => {
+    if (!question.trim() || loading) return;
+    setLoading(true);
+    setResponse('');
+    try {
+      const result = await askStudyAssistant(question, initialContext);
+      setResponse(result);
+    } catch (err: any) {
+      setResponse(`Error: ${err.message || 'Failed to get response.'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-background/60 backdrop-blur-sm z-50"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed right-0 top-0 h-full w-full max-w-lg bg-surface-low border-l border-outline/15 z-50 flex flex-col"
+          >
+            <div className="flex items-center justify-between p-6 border-b border-outline/10">
+              <div className="flex items-center gap-3">
+                <div className="bg-secondary/20 p-2 rounded-lg">
+                  <MessageSquare className="text-secondary w-5 h-5" />
+                </div>
+                <h3 className="font-headline font-bold text-lg uppercase tracking-tight">AI Study Assistant</h3>
+              </div>
+              <button onClick={onClose} className="text-tertiary hover:text-on-surface transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {configured ? (
+              <div className="flex-1 flex flex-col p-6 overflow-hidden">
+                <div className="mb-4">
+                  <p className="text-[10px] text-tertiary uppercase tracking-widest font-bold mb-1">Context</p>
+                  <p className="text-xs text-on-surface bg-surface-container px-3 py-2 rounded-lg">{initialContext}</p>
+                </div>
+
+                <div className="mb-4">
+                  <textarea
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+                    placeholder="Ask anything about this topic..."
+                    className="w-full bg-surface-container-lowest text-sm py-3 px-4 rounded-lg focus:ring-1 focus:ring-secondary transition-all placeholder:text-tertiary/50 resize-none h-24"
+                  />
+                </div>
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading || !question.trim()}
+                  className="flex items-center justify-center gap-2 bg-secondary text-background font-bold py-2.5 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                  {loading ? 'Thinking...' : 'Ask Assistant'}
+                </button>
+
+                <div className="flex-1 overflow-y-auto">
+                  {response && (
+                    <div className="bg-surface-container rounded-lg p-4 prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown>{response}</ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center mb-4 border border-outline/10">
+                  <AlertCircle className="text-tertiary w-7 h-7" />
+                </div>
+                <h4 className="font-headline font-bold text-lg mb-2">API Key Required</h4>
+                <p className="text-tertiary text-sm max-w-xs mb-4">Set your Gemini API key to enable the AI study assistant.</p>
+                <code className="text-xs bg-surface-container px-3 py-2 rounded-lg text-secondary">
+                  cp .env.example .env.local && edit GEMINI_API_KEY
+                </code>
+              </div>
+            )}
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+};
+
+// --- Main App ---
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('roadmap');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiContext, setAiContext] = useState('');
+  const [resourceTypeFilters, setResourceTypeFilters] = useState<Set<Resource['type']>>(
+    new Set(['video', 'github', 'paper', 'doc'])
+  );
+
+  const activeStage = ROADMAP_DATA.find(s => s.status === 'active');
+
+  const filteredRoadmapData = useMemo(() => {
+    if (!searchQuery.trim()) return ROADMAP_DATA;
+    const q = searchQuery.toLowerCase();
+    return ROADMAP_DATA.map(stage => {
+      const stageMatch = stage.title.toLowerCase().includes(q) || stage.subtitle.toLowerCase().includes(q);
+      if (stageMatch) return stage;
+      const filteredModules = stage.modules.filter(m =>
+        m.title.toLowerCase().includes(q) ||
+        m.content.toLowerCase().includes(q) ||
+        (m.resources || []).some(r => r.title.toLowerCase().includes(q))
+      );
+      if (filteredModules.length === 0) return null;
+      return { ...stage, modules: filteredModules };
+    }).filter(Boolean) as RoadmapStage[];
+  }, [searchQuery]);
+
+  const allResources = useMemo(() =>
+    ROADMAP_DATA.flatMap(s => s.modules.flatMap(m => m.resources || [])),
+    []
+  );
+
+  const filteredLearningResources = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return allResources.filter(r => !q || r.title.toLowerCase().includes(q));
+  }, [searchQuery, allResources]);
+
+  const openAiPanel = (context: string) => {
+    setAiContext(context);
+    setAiPanelOpen(true);
+  };
+
+  const toggleResourceTypeFilter = (type: Resource['type']) => {
+    setResourceTypeFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) {
+        if (next.size > 1) next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="flex min-h-screen bg-background text-on-surface selection:bg-secondary/30">
+      {/* AI Assistant Panel */}
+      <AIAssistantPanel
+        open={aiPanelOpen}
+        onClose={() => setAiPanelOpen(false)}
+        initialContext={aiContext}
+      />
+
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 h-full w-64 flex flex-col py-6 bg-surface-low border-r border-outline/15 z-50">
         <div className="px-6 mb-10">
@@ -179,14 +374,18 @@ export default function App() {
         <nav className="flex-1 space-y-1 px-3">
           <SidebarItem icon={Map} label="Roadmap" active={activeTab === 'roadmap'} onClick={() => setActiveTab('roadmap')} />
           <SidebarItem icon={School} label="Learning" active={activeTab === 'learning'} onClick={() => setActiveTab('learning')} />
-          <SidebarItem icon={Terminal} label="Projects" active={activeTab === 'projects'} onClick={() => setActiveTab('projects')} />
+          <SidebarItem icon={Wrench} label="Projects" active={activeTab === 'projects'} onClick={() => setActiveTab('projects')} />
           <SidebarItem icon={Library} label="Resources" active={activeTab === 'resources'} onClick={() => setActiveTab('resources')} />
           <SidebarItem icon={LineChart} label="Strategy" active={activeTab === 'strategy'} onClick={() => setActiveTab('strategy')} />
         </nav>
 
         <div className="mt-auto px-4 space-y-2">
-          <button className="w-full bg-gradient-to-br from-primary to-secondary text-background py-2.5 rounded-lg font-bold text-sm tracking-tight active:scale-95 transition-transform shadow-lg shadow-secondary/10">
-            New Experiment
+          <button
+            onClick={() => openAiPanel(activeStage?.subtitle ?? 'LLM Engineering')}
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-primary to-secondary text-background py-2.5 rounded-lg font-bold text-sm tracking-tight active:scale-95 transition-transform shadow-lg shadow-secondary/10"
+          >
+            <MessageSquare className="w-4 h-4" />
+            Ask AI Assistant
           </button>
           <div className="pt-4 space-y-1">
             <button className="flex items-center w-full px-4 py-2 text-tertiary hover:text-on-surface transition-colors">
@@ -208,12 +407,27 @@ export default function App() {
           <div className="flex items-center gap-4 flex-1">
             <div className="relative w-96 group">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary w-4 h-4" />
-              <input 
-                type="text" 
-                placeholder="Search knowledge base..." 
-                className="w-full bg-surface-container-lowest border-none text-sm py-2 pl-10 pr-4 rounded-lg focus:ring-1 focus:ring-secondary transition-all placeholder:text-tertiary/50"
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search knowledge base..."
+                className="w-full bg-surface-container-lowest border-none text-sm py-2 pl-10 pr-10 rounded-lg focus:ring-1 focus:ring-secondary transition-all placeholder:text-tertiary/50"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-on-surface transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
+            {searchQuery && (
+              <span className="text-[10px] text-tertiary uppercase tracking-widest font-bold">
+                {filteredRoadmapData.length} result{filteredRoadmapData.length !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-6">
             <div className="flex gap-4">
@@ -232,9 +446,9 @@ export default function App() {
                 <p className="text-[10px] text-tertiary uppercase tracking-widest mt-1">Senior Architect</p>
               </div>
               <div className="w-9 h-9 rounded-full border border-secondary/20 overflow-hidden bg-surface-container">
-                <img 
-                  src="https://picsum.photos/seed/engineer/100/100" 
-                  alt="User Avatar" 
+                <img
+                  src="https://picsum.photos/seed/engineer/100/100"
+                  alt="User Avatar"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                 />
@@ -272,9 +486,16 @@ export default function App() {
 
                 <div className="grid grid-cols-12 gap-6">
                   <div className="col-span-12 lg:col-span-8 space-y-6">
-                    {ROADMAP_DATA.map((stage) => (
-                      <StageCard key={stage.id} stage={stage} />
-                    ))}
+                    {filteredRoadmapData.length > 0 ? (
+                      filteredRoadmapData.map((stage) => (
+                        <StageCard key={stage.id} stage={stage} />
+                      ))
+                    ) : (
+                      <div className="text-center py-12 text-tertiary">
+                        <Search className="w-8 h-8 mx-auto mb-3 opacity-50" />
+                        <p>No stages match "{searchQuery}"</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="col-span-12 lg:col-span-4 space-y-6">
@@ -291,7 +512,10 @@ export default function App() {
                           <h5 className="text-on-surface font-medium mb-2">FlashAttention Implementation</h5>
                           <p className="text-xs text-tertiary leading-relaxed">Optimize the attention mechanism for longer sequence lengths using tiled memory access patterns.</p>
                         </div>
-                        <button className="w-full flex items-center justify-center gap-2 bg-secondary text-background font-bold py-3 rounded-lg text-sm transition-transform active:scale-95">
+                        <button
+                          onClick={() => openAiPanel('FlashAttention Implementation — Optimize attention mechanism using tiled memory access patterns, CUDA shared memory, and kernel fusion techniques.')}
+                          className="w-full flex items-center justify-center gap-2 bg-secondary text-background font-bold py-3 rounded-lg text-sm transition-transform active:scale-95"
+                        >
                           Start Session
                           <ArrowRight className="w-4 h-4" />
                         </button>
@@ -332,9 +556,9 @@ export default function App() {
 
                     {/* Market Strategy */}
                     <div className="relative rounded-xl h-48 overflow-hidden group">
-                      <img 
-                        src="https://picsum.photos/seed/network/600/400" 
-                        alt="Market Strategy" 
+                      <img
+                        src="https://picsum.photos/seed/network/600/400"
+                        alt="Market Strategy"
                         referrerPolicy="no-referrer"
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                       />
@@ -385,7 +609,7 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {ROADMAP_DATA.flatMap(s => s.modules.flatMap(m => m.resources || [])).map((res, i) => (
+                  {filteredLearningResources.map((res, i) => (
                     <motion.a
                       key={i}
                       href={res.url}
@@ -413,7 +637,138 @@ export default function App() {
               </motion.div>
             )}
 
-            {['projects', 'resources', 'strategy'].includes(activeTab) && (
+            {activeTab === 'projects' && (
+              <motion.div
+                key="projects"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-8"
+              >
+                <div>
+                  <h2 className="text-4xl font-black text-on-surface font-headline tracking-tighter uppercase mb-2">Hands-On Projects</h2>
+                  <p className="text-tertiary max-w-xl">Build real systems to solidify your understanding. Each project maps to a roadmap stage.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {PROJECTS.map((project, i) => (
+                    <motion.div
+                      key={project.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.08 }}
+                      className="bg-surface-container-low p-6 rounded-xl border border-outline/10 hover:border-secondary/40 transition-all group flex flex-col"
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <DifficultyBadge difficulty={project.difficulty} />
+                        <span className="text-[10px] text-tertiary font-bold uppercase tracking-widest">Stage {project.relatedStage}</span>
+                      </div>
+                      <h4 className="text-lg font-bold text-on-surface mb-3 group-hover:text-secondary transition-colors">{project.title}</h4>
+                      <p className="text-sm text-tertiary leading-relaxed mb-4 flex-1">{project.description}</p>
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {project.tags.map(tag => (
+                          <span key={tag} className="text-[10px] px-2 py-0.5 bg-surface-highest/50 text-tertiary rounded border border-outline/10">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => openAiPanel(`Project: ${project.title} — ${project.description}`)}
+                        className="flex items-center gap-2 text-xs text-tertiary hover:text-secondary transition-colors"
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        Ask AI for guidance
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'resources' && (
+              <motion.div
+                key="resources"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-8"
+              >
+                <div className="flex justify-between items-end">
+                  <div>
+                    <h2 className="text-4xl font-black text-on-surface font-headline tracking-tighter uppercase mb-2">Resource Library</h2>
+                    <p className="text-tertiary max-w-xl">All resources organized by stage and module. Filter by type to find what you need.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    {(['video', 'github', 'paper', 'doc'] as Resource['type'][]).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => toggleResourceTypeFilter(type)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all",
+                          resourceTypeFilters.has(type)
+                            ? "bg-secondary/20 text-secondary border-secondary/30"
+                            : "bg-surface-container text-tertiary border-outline/10 hover:border-outline/30"
+                        )}
+                      >
+                        <ResourceIcon type={type} />
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-10">
+                  {ROADMAP_DATA.map(stage => {
+                    const stageResources = stage.modules.flatMap(m =>
+                      (m.resources || []).filter(r => resourceTypeFilters.has(r.type)).map(r => ({ ...r, moduleTitle: m.title }))
+                    );
+                    if (stageResources.length === 0) return null;
+
+                    return (
+                      <div key={stage.id}>
+                        <div className="flex items-center gap-3 mb-4">
+                          <span className={cn(
+                            "inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
+                            stage.status === 'completed' ? "bg-secondary/10 text-secondary" :
+                            stage.status === 'active' ? "bg-secondary/20 text-secondary" : "bg-surface-highest text-tertiary"
+                          )}>
+                            Stage {stage.id}
+                          </span>
+                          <h3 className="font-headline font-bold text-lg text-on-surface">{stage.subtitle}</h3>
+                          <div className="flex-1 h-px bg-outline/15" />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {stageResources.map((res, i) => (
+                            <a
+                              key={i}
+                              href={res.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-surface-container-low p-4 rounded-lg border border-outline/10 hover:border-secondary/40 hover:bg-surface-container transition-all group"
+                            >
+                              <div className="flex items-center gap-3 mb-2">
+                                <div className="p-2 bg-surface-highest rounded text-secondary">
+                                  <ResourceIcon type={res.type} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-on-surface group-hover:text-secondary transition-colors truncate">{res.title}</p>
+                                  <p className="text-[10px] text-tertiary">{res.moduleTitle}</p>
+                                </div>
+                                <ExternalLink className="w-3 h-3 text-tertiary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'strategy' && (
               <motion.div
                 key="placeholder"
                 initial={{ opacity: 0 }}
@@ -424,7 +779,7 @@ export default function App() {
                   <Lock className="text-tertiary w-8 h-8" />
                 </div>
                 <h3 className="text-2xl font-headline font-bold mb-2">Section Restricted</h3>
-                <p className="text-tertiary max-w-md">Complete current roadmap milestones to unlock the full potential of the {activeTab} laboratory.</p>
+                <p className="text-tertiary max-w-md">Complete current roadmap milestones to unlock the full potential of the strategy laboratory.</p>
               </motion.div>
             )}
           </AnimatePresence>
