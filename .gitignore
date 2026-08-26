@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# machine-local Claude Code permissions -- can accumulate API keys, never commit
+.claude/settings.local.json
